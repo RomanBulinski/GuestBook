@@ -1,48 +1,40 @@
+import DAO.NoteDAO;
+import MODEL.Note;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
+import org.jtwig.JtwigModel;
+import org.jtwig.JtwigTemplate;
 
 import java.io.*;
 import java.net.URLDecoder;
 import java.text.SimpleDateFormat;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 
 public class GuestBook implements HttpHandler {
 
-    int counter = 0;
-    String message = "";
-    String currentTime= null;
 
     @Override
     public void handle(HttpExchange httpExchange) throws IOException {
 
         String response = "";
         String method = httpExchange.getRequestMethod();
+        JtwigTemplate layout = JtwigTemplate.classpathTemplate("templates/layout.twig");
+        JtwigModel model = JtwigModel.newModel();
 
-//         Send a form if it wasn't submitted yet.
         if(method.equals("GET")){
-
-            response = "<html><body>" +
-
-                    "<h1>Simple guestbook</h1>" +
-
-                    "<form method=\"POST\">\n" +
-                    "  First name:<br>\n" +
-                    "  <input type=\"text\" name=\"firstname\" value=\"\">\n" +
-                    "  <br>\n" +
-
-                    "  Notes:<br>\n" +
-                    "  <input type=\"text\" name=\"notes\" value=\"\">\n" +
-                    "  <br><br>\n" +
-
-                    "  <input type=\"submit\" value=\"Submit\">\n" +
-                    "</form> " +
-                    "</body></html>";
+            String message = makeMessage();
+            model.with("message", message);
+            response = layout.render(model);
         }
-
         // If the form was submitted, retrieve it's content.
         if(method.equals("POST")){
+
+
+            String message = makeMessage();
+
             InputStreamReader inputStreamReader = new InputStreamReader(httpExchange.getRequestBody(), "utf-8");
             BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
             String formData = bufferedReader.readLine();
@@ -50,40 +42,27 @@ public class GuestBook implements HttpHandler {
             Map inputs = parseFormData(formData);
 
             SimpleDateFormat time_formatter = new SimpleDateFormat("yyyy-MM-dd_HH:mm:ss.SSS");
-
-            currentTime = time_formatter.format(System.currentTimeMillis());
+            NoteDAO guestnote = new NoteDAO();
+            List<Note> allNotes = guestnote.getAllNotes();
+            int counter = allNotes.size();
             counter++;
-            message =  message +    counter + "<br>"+
-                    inputs.get("notes") + "<br>"+
-                    "Name : "+inputs.get("firstname")+"<br>"+
-                    "Date : " +currentTime +"<br><br>";
+            String note = (String)inputs.get("notes");
+            String name = (String)inputs.get("firstname");
+            String currentTime = time_formatter.format(System.currentTimeMillis());
 
-            response = "<html><body>" +
+            message =  message + "<br>"+ counter + "<br>"+
+                    note +"<br>"+ name +"<br>"+currentTime+"<br><br>";
 
-                    "<h1>Simple guestbook</h1>" +
-                    "<h4>"+message+"</h4>"+
+            // add note toDB via postgres
+            Boolean addigResult = guestnote.addNote(counter,note,name,currentTime);
+            System.out.println(addigResult);
 
-                    "<form method=\"POST\">\n" +
+            model.with("message", message);
+            response = layout.render(model);
 
-                    "  Notes:<br>\n" +
-                    "  <input type=\"text\" name=\"notes\" value=\"\">\n" +
-                    "  <br><br>\n" +
-
-                    "  First name:<br>\n" +
-                    "  <input type=\"text\" name=\"firstname\" value=\"\">\n" +
-                    "  <br>\n" +
-
-                    "  <input type=\"submit\" value=\"Submit\">\n" +
-                    "</form> " +
-                    "</body><html>";
         }
-
-        httpExchange.sendResponseHeaders(200, response.length());
-        OutputStream outputStream = httpExchange.getResponseBody();
-        outputStream.write(response.getBytes());
-        outputStream.close();
+        sendResponse( httpExchange ,response);
     }
-
 
     private static Map<String, String> parseFormData(String formData) throws UnsupportedEncodingException {
         Map<String, String> map = new HashMap<>();
@@ -95,6 +74,30 @@ public class GuestBook implements HttpHandler {
             map.put(keyValue[0], value);
         }
         return map;
+    }
+
+    private void sendResponse(HttpExchange httpExchange, String response) throws IOException {
+        httpExchange.sendResponseHeaders(200, response.length());
+        OutputStream outputStream = httpExchange.getResponseBody();
+        outputStream.write(response.getBytes());
+        outputStream.close();
+    }
+
+
+    private String makeMessage() {
+        NoteDAO guestnote = new NoteDAO();
+        String message = "";
+        List<Note> allNotes = guestnote.getAllNotes();
+        for (int i = 0; i < allNotes.size(); i++) {
+            Integer id = allNotes.get(i).getId();
+            String note = allNotes.get(i).getGuestNote();
+            String name = allNotes.get(i).getName();
+            String time = allNotes.get(i).getTime();
+                message = message + "<br>"+
+                        "<font color=\"red\" size=\"3\">"+id+" "+"</font>"+
+                        note+"<br>"+name+"<br>"+time+"<br>";
+        }
+        return message;
     }
 
 }
